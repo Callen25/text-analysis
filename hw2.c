@@ -7,6 +7,14 @@
 #include "hashtable.h"
 #include "maxheap.h"
 
+#define SINGLE_SIZE 100000
+#define SINGLE_TOP 50
+#define BIGRAM_SIZE 50000
+#define BIGRAM_TOP 20
+#define TRIGRAM_SIZE 30000
+#define TRIGRAM_TOP 12
+#define STOP_SIZE 75
+
 typedef struct word_count
 {
     // Save words/ocurrences in hash table
@@ -18,14 +26,33 @@ typedef struct word_count
     int unique;
     // Save top N words in a heap of size N
     int heap_size;
+    int leaves;
     char** words;
     int* top_ocurs;
 } word_count;
 
+word_count new_word_count(int tableSize, int heapSize)
+{
+    word_count new = {tableSize, calloc(tableSize, sizeof(char*)), calloc(tableSize, 
+    sizeof(int)), 0, 0, heapSize, get_leaves(heapSize), calloc(heapSize, sizeof(char*)), 
+    calloc(heapSize, sizeof(int))};
+    return new;
+}
+
+void calc_top_N(word_count topW)
+{
+    for(int i = 0; i < topW.size; i++){
+        if(topW.ocurs[i] > 0){
+            add_heap(topW.ocurs[i], topW.dictionary[i], topW.top_ocurs, 
+            topW.words, topW.heap_size, topW.leaves);
+            free(topW.dictionary[i]);
+        }
+    }   
+}
+
 /* Add top 50 most common words to set of stop words */
 void fill_stop_words(char*** stop_words, int size)
 {
-    //Arr is 1.5x size of set to decrease amount of collisions
     set_add("the", *stop_words, size);
     set_add("of", *stop_words, size);
     set_add("to", *stop_words, size);
@@ -130,7 +157,8 @@ void ignore_script(char* line, int* i, bool* in_script)
 }
 
 void parse_words(char* line, word_count* single, word_count* bigrams,
-char** biword, char** stop_words, bool* in_tag, bool* in_script)
+char** biword, word_count* trigrams, char** triword, char** stop_words, 
+bool* in_tag, bool* in_script)
 {
     int i = 0;
     int start = 0;
@@ -171,14 +199,24 @@ char** biword, char** stop_words, bool* in_tag, bool* in_script)
                 single->unique += add(sub, single->dictionary, single->ocurs, 
                 single->size);
                 single->total += 1;
-                if(*biword != NULL && !contains(sub, stop_words, 75)){
+                if(*biword != NULL && !contains(sub, stop_words, STOP_SIZE)){
                     char* bigram = malloc(strlen(sub) + strlen(*biword) + 2);
                     make_bigram(&bigram, *biword, sub);
                     bigrams->unique += add(bigram, bigrams->dictionary, 
                     bigrams->ocurs, bigrams->size);
                     bigrams->total += 1;
+                    if(*triword != NULL)
+                    {
+                        char* trigram = malloc(strlen(bigram) + 
+                        strlen(*triword) + 2);
+                        make_bigram(&trigram, *triword, bigram);
+                        trigrams->unique += add(trigram, trigrams->dictionary,
+                        trigrams->ocurs, trigrams->size);
+                        trigrams->total += 1;
+                    }
                 }
-                if(!contains(sub, stop_words, 75)) {
+                *triword = *biword;
+                if(!contains(sub, stop_words, STOP_SIZE)) {
                     *biword = malloc(strlen(sub) + 1);
                     strcpy(*biword, sub);
                 }
@@ -201,7 +239,8 @@ char** biword, char** stop_words, bool* in_tag, bool* in_script)
     }
 }
 
-void print_statistics(int count, word_count* single, word_count* bigrams)
+void print_statistics(int count, word_count* single, word_count* bigrams, 
+word_count* trigrams)
 {
     printf("Total number of documents: %d\n", count);
     printf("Total number of words: %d\n", single->total);
@@ -209,65 +248,65 @@ void print_statistics(int count, word_count* single, word_count* bigrams)
     printf("Total number of interesting bigrams: %d\n", bigrams->total);
     printf("Total number of unique interesting bigrams: %d\n", 
     bigrams->unique);
+    printf("Total number of interesting trigrams: %d\n", trigrams->total);
+    printf("Total number of unique interesting trigrams: %d\n", 
+    trigrams->unique);
     printf("\nTop 50 words:\n");
     print_max_heap(single->top_ocurs, single->words, single->heap_size);
     printf("\nTop 20 interesting bigrams:\n");
     print_max_heap(bigrams->top_ocurs, bigrams->words, bigrams->heap_size);
+    printf("\nTop 12 interesting trigrams:\n");
+    print_max_heap(trigrams->top_ocurs, trigrams->words, trigrams->heap_size);
 }
 
 void count_words(char* filename, word_count* single, word_count* bigrams, 
-char** stop_words)
+word_count* trigrams, char** stop_words)
 {
     FILE* read = fopen(filename, "r");
     char line[1025];
     bool in_tag = false;
     bool in_script = false;
     char* biword = NULL;
+    char* triword = NULL;
 
     while(fgets(line, 1025, read))
     {
-        parse_words(line, single, bigrams, &biword, stop_words, &in_tag, 
-        &in_script);
+        parse_words(line, single, bigrams, &biword, trigrams, &triword, stop_words, 
+        &in_tag, &in_script);
     }
 }
 
 void text_statistics(int count, char** files, char*** stop_words)
 {
-    word_count single = {100000, calloc(100000, sizeof(char*)), calloc(100000, 
-    sizeof(int)), 0, 0, 50, calloc(50, sizeof(char*)), calloc(50, 
-    sizeof(int))};
-
-    word_count bigrams = {40000, calloc(40000, sizeof(char*)), calloc(40000,
-    sizeof(int)), 0, 0, 20, calloc(20, sizeof(char*)), calloc(20, 
-    sizeof(int))};
+    word_count single = new_word_count(SINGLE_SIZE, SINGLE_TOP);
+    word_count bigrams = new_word_count(BIGRAM_SIZE, BIGRAM_TOP);
+    word_count trigrams = new_word_count(TRIGRAM_SIZE, TRIGRAM_TOP);
 
     for(int i = 1; i < count; i++)
     {
-        count_words(files[i], &single, &bigrams, *stop_words);
+        count_words(files[i], &single, &bigrams, &trigrams, *stop_words);
     }
 
-    for(int i = 0; i < single.size; i++){
-        if(single.ocurs[i] > 0){
-            add_heap(single.ocurs[i], single.dictionary[i], single.top_ocurs, 
-            single.words, single.heap_size);
-            free(single.dictionary[i]);
-        }
-    }
+    calc_top_N(single);
+    calc_top_N(bigrams);
+    calc_top_N(trigrams);
 
-    for(int i = 0; i < bigrams.size; i++){
-        if(bigrams.ocurs[i] > 0){
-            add_heap(bigrams.ocurs[i], bigrams.dictionary[i], bigrams.top_ocurs,
-            bigrams.words, bigrams.heap_size);
-            free(bigrams.dictionary[i]);
-        }
-    }
-
-    print_statistics(count - 1, &single, &bigrams);
+    print_statistics(count - 1, &single, &bigrams, &trigrams);
 
     free(single.dictionary);
     free(single.ocurs);
     free(single.top_ocurs);
     free(single.words);
+
+    free(bigrams.dictionary);
+    free(bigrams.ocurs);
+    free(bigrams.top_ocurs);
+    free(bigrams.words);
+
+    free(trigrams.dictionary);
+    free(trigrams.ocurs);
+    free(trigrams.top_ocurs);
+    free(trigrams.words);
 }
 
 int main(int argc, char** argv)
@@ -279,7 +318,7 @@ int main(int argc, char** argv)
                         "USAGE: a.out <inputt-file>\n");
         return 1;
     }
-    char** stop_words = calloc(75, sizeof(char*));
-    fill_stop_words(&stop_words, 75);
+    char** stop_words = calloc(STOP_SIZE, sizeof(char*));
+    fill_stop_words(&stop_words, STOP_SIZE);
     text_statistics(argc, argv, &stop_words);
 }
