@@ -14,9 +14,9 @@
 
 #define SINGLE_SIZE 100000
 #define SINGLE_TOP 50
-#define BIGRAM_SIZE 50000
+#define BIGRAM_SIZE 100000
 #define BIGRAM_TOP 20
-#define TRIGRAM_SIZE 30000
+#define TRIGRAM_SIZE 100000
 #define TRIGRAM_TOP 12
 #define STOP_SIZE 75
 #define HTML_CHARS 5
@@ -500,10 +500,12 @@ void text_statistics(int count, char **files)
     char **stop_words = calloc(STOP_SIZE, sizeof(char *));
     fill_stop_words(&stop_words, STOP_SIZE);
 
-    for (int i = 1; i < count; i++)
+    for(int i = 1; i < count; i++)
     {
         count_words(files[i], &single, &bigrams, &trigrams, stop_words, false, 0, 0);
     }
+
+    printf("counted words for all files\n");
 
     for (int i = 0; i < STOP_SIZE; i++)
     {
@@ -533,48 +535,7 @@ void text_statistics(int count, char **files)
     free(trigrams.words);
 }
 
-#ifdef USE_SUBMITTY_MAIN
-
-int main(int argc, char* argv[])
-{
-    setvbuf(stdout, NULL, _IONBF, 0);
-    if ( argc != 3 )
-    {
-        fprintf( stderr, "ERROR: Invalid arguments\n" );
-        fprintf( stderr, "USAGE: %s <regex-file> <input-file>\n", argv[0] );
-        return EXIT_FAILURE;
-    }
-
-    FILE *regex_file = fopen(argv[1], "r");
-    if (regex_file == NULL)
-    {
-        fprintf(stderr, "ERROR: regex file <%s> does not exist\n", argv[1]);
-        exit(1);
-    }
-
-    char reg_pattern[MAX_LENGTH];
-    fgets(reg_pattern, MAX_LENGTH, regex_file);
-    fclose(regex_file);
-
-    char** matches = NULL;
-
-    int l = regex_match(argv[2], reg_pattern, &matches);
-
-    int i;
-    for(i = 0; i < l; i++)
-    {
-        printf("%s\n", matches[i]);
-    }
-    for(i = 0; i < l; i++)
-    {
-        free(matches[i]);
-    }
-    free(matches);
-
-    return EXIT_SUCCESS;
-}
-
-#else
+#ifndef USE_SUBMITTY_MAIN
 
 int main(int argc, char **argv)
 {
