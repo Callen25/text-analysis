@@ -505,8 +505,6 @@ void text_statistics(int count, char **files)
         count_words(files[i], &single, &bigrams, &trigrams, stop_words, false, 0, 0);
     }
 
-    printf("counted words for all files\n");
-
     for (int i = 0; i < STOP_SIZE; i++)
     {
         free(stop_words[i]);
